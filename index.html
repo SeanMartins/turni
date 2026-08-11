@@ -251,6 +251,12 @@
   .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
   .add-shift-form{border-top:1px dashed var(--line);margin-top:14px;padding-top:14px;}
 
+  #appFooter{
+    text-align:center;
+    font-size:11px;
+    color:var(--muted);
+    padding:24px 16px 30px;
+  }
   .login-bg{
     display:none;
     position:fixed;inset:0;
@@ -327,6 +333,7 @@
   <nav>
     <button class="active" data-view="calendario">Calendario</button>
     <button data-view="dipendenti">Dipendenti</button>
+    <button data-view="postazioni">Postazioni</button>
     <button data-view="export">Esporta PDF</button>
   </nav>
 </header>
@@ -370,6 +377,30 @@
         <tbody></tbody>
       </table>
       <div class="empty-state" id="empEmpty" style="display:none;">Nessun dipendente inserito.</div>
+    </div>
+  </section>
+
+  <!-- VISTA POSTAZIONI -->
+  <section id="view-postazioni" class="view">
+    <div class="panel">
+      <h2>Aggiungi postazione</h2>
+      <div class="row">
+        <div class="field" style="min-width:100%;">
+          <label>Descrizione posto di servizio</label>
+          <textarea id="postoNome" rows="2" placeholder="es. OB. GABBIOTTO SESTO FIORENTINO - AREA TOSCANA, VIA SAN MORESE 57, 50019 Sesto Fiorentino"></textarea>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn" id="addPostoBtn">Aggiungi</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Postazioni salvate</h2>
+      <table class="list" id="postoTable">
+        <thead><tr><th>Descrizione</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty-state" id="postoEmpty" style="display:none;">Nessuna postazione inserita.</div>
     </div>
   </section>
 
@@ -451,8 +482,7 @@
       <div class="row" style="margin-top:8px;">
         <div class="field" id="shiftPostoField">
           <label>Posto di servizio</label>
-          <input id="shiftPosto" list="postoList" placeholder="es. OB. GABBIOTTO SESTO FIORENTINO - AREA TOSCANA, VIA SAN MORESE 57, 50019 Sesto Fiorentino">
-          <datalist id="postoList"></datalist>
+          <select id="shiftPosto"></select>
         </div>
       </div>
       <div class="row" style="margin-top:8px;">
@@ -471,6 +501,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+  <footer id="appFooter"></footer>
 </div>
 
 <script>
@@ -497,11 +528,15 @@ db.enablePersistence().catch(err=>{
 
 const empCol = db.collection("dipendenti");
 const shiftCol = db.collection("turni");
+const postoCol = db.collection("postazioni");
 
 const AZIENDA = {
   nome: "F.P. SERVIZI INTEGRATI",
   indirizzo: "VIA NOMENTANA, 761 - 00137 Roma"
 };
+
+// Aggiorna questo numero ad ogni modifica rilevante dell'app
+const APP_VERSION = "1.0.0";
 
 // Logo aziendale incorporato in base64 (nessun file esterno da hostare)
 const LOGO_BASE64 = "data:image/jpeg;base64,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";
@@ -511,6 +546,7 @@ const MESI = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","
 
 let dipendenti = [];   // {id, code, name, dept}
 let turni = [];        // {id, empId, date:'YYYY-MM-DD', type, from, to, posto, note}
+let postazioni = [];   // {id, nome}
 let currentMonth = new Date();
 currentMonth.setDate(1);
 let selectedDate = null;
@@ -562,6 +598,70 @@ function listenTurni(){
     turni = snap.docs.map(d=>({id:d.id,...d.data()}));
     renderCalendar();
   });
+}
+
+async function listenPostazioni(){
+  postoCol.orderBy("nome").onSnapshot(snap=>{
+    postazioni = snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderPostoTable();
+    populatePostoSelect();
+  });
+  // Seed automatico: se non c'è ancora nessuna postazione salvata,
+  // inserisce quella dell'esempio F.P. Servizi Integrati.
+  const snap = await postoCol.limit(1).get();
+  if(snap.empty){
+    await postoCol.add({
+      nome: "OB. GABBIOTTO SESTO FIORENTINO - AREA TOSCANA,VIA SAN MORESE 57 , 50019 Sesto Fiorentino"
+    });
+  }
+}
+
+/* ---------------- Postazioni ---------------- */
+document.getElementById("addPostoBtn").addEventListener("click", async ()=>{
+  const nome=document.getElementById("postoNome").value.trim();
+  if(!nome){showToast("Inserisci una descrizione");return;}
+  await postoCol.add({nome});
+  document.getElementById("postoNome").value="";
+  showToast("Postazione aggiunta");
+});
+
+function renderPostoTable(){
+  const tbody=document.querySelector("#postoTable tbody");
+  tbody.innerHTML="";
+  document.getElementById("postoEmpty").style.display = postazioni.length ? "none":"block";
+  postazioni.forEach(p=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`
+      <td>${p.nome}</td>
+      <td style="text-align:right;white-space:nowrap;">
+        <button class="icon-btn" data-id="${p.id}" title="Elimina">✕</button>
+      </td>`;
+    tr.querySelector(".icon-btn").addEventListener("click", async ()=>{
+      if(confirm("Eliminare questa postazione? I turni già assegnati non vengono modificati.")){
+        await postoCol.doc(p.id).delete();
+        showToast("Postazione eliminata");
+      }
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+function populatePostoSelect(){
+  const sel=document.getElementById("shiftPosto");
+  const current=sel.value;
+  sel.innerHTML="";
+  if(!postazioni.length){
+    const opt=document.createElement("option");
+    opt.value=""; opt.textContent="Nessuna postazione — aggiungila dal menu Postazioni";
+    sel.appendChild(opt);
+    return;
+  }
+  postazioni.forEach(p=>{
+    const opt=document.createElement("option");
+    opt.value=p.nome; opt.textContent=p.nome;
+    sel.appendChild(opt);
+  });
+  if(current && postazioni.some(p=>p.nome===current)) sel.value=current;
 }
 
 /* ---------------- Dipendenti ---------------- */
@@ -718,18 +818,6 @@ function renderTimePresets(){
   });
 }
 
-function populatePostoList(){
-  const list=document.getElementById("postoList");
-  const seen=new Set();
-  turni.forEach(t=>{ if(t.posto) seen.add(t.posto); });
-  list.innerHTML="";
-  seen.forEach(v=>{
-    const opt=document.createElement("option");
-    opt.value=v;
-    list.appendChild(opt);
-  });
-}
-
 // Compila automaticamente l'ultimo posto di servizio e l'ultimo orario
 // usati per il dipendente selezionato, così normalmente basta scegliere
 // il nome e confermare.
@@ -767,7 +855,7 @@ function openDayModal(dateKey){
   document.getElementById("modalDateSub").textContent = "Turni assegnati per questo giorno";
   renderModalShiftList();
   renderTimePresets();
-  populatePostoList();
+  populatePostoSelect();
   updateShiftFormFields();
   cancelEditShift();
   const empSel=document.getElementById("shiftEmp");
@@ -1033,7 +1121,9 @@ function GIORNI_LUNGHI(dow){
   return ["domenica","lunedì","martedì","mercoledì","giovedì","venerdì","sabato"][dow];
 }
 
-/* ---------------- Autenticazione ---------------- */
+/* ---------------- Avvio ---------------- */
+document.getElementById("appFooter").textContent =
+  `© ${new Date().getFullYear()} ${AZIENDA.nome} — Gestione Turni v${APP_VERSION}`;
 const auth = firebase.auth();
 let appStarted = false;
 
@@ -1045,6 +1135,7 @@ auth.onAuthStateChanged(user=>{
       appStarted=true;
       listenDipendenti();
       listenTurni();
+      listenPostazioni();
       renderCalendar();
     }
   }else{
