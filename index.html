@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestione Turni</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+<style>
+  :root{
+    --bg:#f5f6f8;
+    --panel:#ffffff;
+    --ink:#1c2230;
+    --muted:#6b7280;
+    --line:#e3e6eb;
+    --accent:#2563eb;
+    --accent-ink:#ffffff;
+    --danger:#dc2626;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+  }
+  header{
+    background:var(--panel);
+    border-bottom:1px solid var(--line);
+    padding:14px 20px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:10px;
+  }
+  header h1{
+    font-size:17px;
+    font-weight:700;
+    margin:0;
+    letter-spacing:.2px;
+  }
+  header .sub{
+    font-size:12px;
+    color:var(--muted);
+  }
+  nav{
+    display:flex;
+    gap:8px;
+  }
+  nav button{
+    background:none;
+    border:1px solid var(--line);
+    padding:7px 14px;
+    border-radius:7px;
+    font-size:13px;
+    font-weight:600;
+    color:var(--muted);
+    cursor:pointer;
+  }
+  nav button.active{
+    background:var(--accent);
+    border-color:var(--accent);
+    color:var(--accent-ink);
+  }
+  main{
+    max-width:1100px;
+    margin:20px auto;
+    padding:0 16px 60px;
+  }
+  .view{display:none;}
+  .view.active{display:block;}
+
+  /* ---- Calendario ---- */
+  .cal-toolbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:14px;
+  }
+  .cal-toolbar .month-label{
+    font-size:18px;
+    font-weight:700;
+    min-width:180px;
+    text-align:center;
+  }
+  .cal-toolbar button{
+    background:var(--panel);
+    border:1px solid var(--line);
+    width:34px;height:34px;
+    border-radius:8px;
+    font-size:16px;
+    cursor:pointer;
+  }
+  .cal-grid{
+    display:grid;
+    grid-template-columns:repeat(7,1fr);
+    gap:6px;
+  }
+  .cal-dow{
+    text-align:center;
+    font-size:11px;
+    font-weight:700;
+    color:var(--muted);
+    text-transform:uppercase;
+    padding-bottom:4px;
+  }
+  .cal-day{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:8px;
+    min-height:92px;
+    padding:6px;
+    cursor:pointer;
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+    transition:border-color .12s;
+  }
+  .cal-day:hover{border-color:var(--accent);}
+  .cal-day.empty{background:transparent;border:none;cursor:default;}
+  .cal-day .num{
+    font-size:12px;
+    font-weight:700;
+    color:var(--muted);
+  }
+  .cal-day.today .num{color:var(--accent);}
+  .shift-chip{
+    font-size:10px;
+    background:#eef2ff;
+    color:#3730a3;
+    border-radius:4px;
+    padding:2px 5px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .shift-chip.riposo{background:#f1f5f9;color:#64748b;}
+  .shift-more{font-size:10px;color:var(--muted);}
+
+  /* ---- Pannelli generici ---- */
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:18px;
+    margin-bottom:16px;
+  }
+  .panel h2{
+    font-size:14px;
+    margin:0 0 12px;
+  }
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:end;}
+  label{
+    font-size:11px;
+    font-weight:700;
+    color:var(--muted);
+    text-transform:uppercase;
+    display:block;
+    margin-bottom:4px;
+  }
+  input,select,textarea{
+    font-family:inherit;
+    font-size:13px;
+    padding:8px 10px;
+    border:1px solid var(--line);
+    border-radius:7px;
+    background:#fff;
+    color:var(--ink);
+    width:100%;
+  }
+  .field{flex:1;min-width:140px;}
+  .btn{
+    background:var(--accent);
+    color:var(--accent-ink);
+    border:none;
+    padding:9px 16px;
+    border-radius:7px;
+    font-size:13px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .btn.secondary{
+    background:#fff;
+    color:var(--ink);
+    border:1px solid var(--line);
+  }
+  .btn.danger{background:var(--danger);}
+  .btn:disabled{opacity:.5;cursor:default;}
+
+  table.list{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+  }
+  table.list th{
+    text-align:left;
+    font-size:11px;
+    text-transform:uppercase;
+    color:var(--muted);
+    border-bottom:1px solid var(--line);
+    padding:8px 6px;
+  }
+  table.list td{
+    padding:8px 6px;
+    border-bottom:1px solid #f0f1f3;
+  }
+  table.list tr:last-child td{border-bottom:none;}
+  .icon-btn{
+    background:none;border:none;cursor:pointer;color:var(--muted);
+    font-size:13px;padding:4px 6px;
+  }
+  .icon-btn:hover{color:var(--danger);}
+
+  /* ---- Modale ---- */
+  .modal-bg{
+    display:none;
+    position:fixed;inset:0;
+    background:rgba(20,24,33,.45);
+    align-items:center;justify-content:center;
+    z-index:50;
+    padding:16px;
+  }
+  .modal-bg.open{display:flex;}
+  .modal{
+    background:#fff;
+    border-radius:var(--radius);
+    width:100%;max-width:480px;
+    padding:20px;
+    max-height:90vh;
+    overflow:auto;
+  }
+  .modal h3{margin:0 0 4px;font-size:15px;}
+  .modal .date-label{font-size:12px;color:var(--muted);margin-bottom:14px;}
+  .modal-shift-row{
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:10px;
+    margin-bottom:10px;
+  }
+  .modal-shift-row .top{
+    display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;
+  }
+  .modal-shift-row .top strong{font-size:13px;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
+  .add-shift-form{border-top:1px dashed var(--line);margin-top:14px;padding-top:14px;}
+
+  .preset-chip{
+    background:#eef2ff;
+    color:#3730a3;
+    border:1px solid #dfe4fb;
+    border-radius:6px;
+    padding:4px 9px;
+    font-size:11px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .preset-chip:hover{background:#e0e7ff;}
+  .preset-chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .empty-state{
+    text-align:center;color:var(--muted);font-size:13px;padding:30px 10px;
+  }
+  .toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:#1c2230;color:#fff;padding:10px 18px;border-radius:8px;
+    font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:99;
+  }
+  .toast.show{opacity:1;}
+  @media (max-width:600px){
+    .cal-day{min-height:64px;}
+    .shift-chip{font-size:9px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Gestione Turni</h1>
+    <div class="sub">F.P. Servizi Integrati</div>
+  </div>
+  <nav>
+    <button class="active" data-view="calendario">Calendario</button>
+    <button data-view="dipendenti">Dipendenti</button>
+    <button data-view="export">Esporta PDF</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- VISTA CALENDARIO -->
+  <section id="view-calendario" class="view active">
+    <div class="cal-toolbar">
+      <button id="prevMonth">‹</button>
+      <div class="month-label" id="monthLabel">—</div>
+      <button id="nextMonth">›</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+  </section>
+
+  <!-- VISTA DIPENDENTI -->
+  <section id="view-dipendenti" class="view">
+    <div class="panel">
+      <h2>Aggiungi dipendente</h2>
+      <div class="row">
+        <div class="field">
+          <label>Matricola</label>
+          <input id="empCode" placeholder="es. 5012">
+        </div>
+        <div class="field">
+          <label>Cognome e Nome</label>
+          <input id="empName" placeholder="es. AGRESTI GIUSEPPE">
+        </div>
+        <div class="field">
+          <label>Reparto / Note</label>
+          <input id="empDept" placeholder="es. SI PORTIERATO ROMA">
+        </div>
+        <button class="btn" id="addEmpBtn">Aggiungi</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Dipendenti</h2>
+      <table class="list" id="empTable">
+        <thead><tr><th>Matricola</th><th>Nome</th><th>Reparto</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty-state" id="empEmpty" style="display:none;">Nessun dipendente inserito.</div>
+    </div>
+  </section>
+
+  <!-- VISTA EXPORT -->
+  <section id="view-export" class="view">
+    <div class="panel">
+      <h2>Esporta ordine di servizio</h2>
+      <div class="row">
+        <div class="field">
+          <label>Dipendente</label>
+          <select id="exportEmp"><option value="">Tutti</option></select>
+        </div>
+        <div class="field">
+          <label>Periodo</label>
+          <select id="exportRange">
+            <option value="month">Mensile</option>
+            <option value="week">Settimanale</option>
+          </select>
+        </div>
+        <div class="field" id="exportMonthField">
+          <label>Mese</label>
+          <input type="month" id="exportMonth">
+        </div>
+        <div class="field" id="exportWeekField" style="display:none;">
+          <label>Settimana (un giorno qualsiasi)</label>
+          <input type="date" id="exportWeekDate">
+        </div>
+        <button class="btn" id="exportBtn">Genera PDF</button>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-top:10px;">
+        Se selezioni "Tutti" viene generato un PDF separato per ogni dipendente con turni nel periodo scelto.
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<!-- MODALE GIORNO -->
+<div class="modal-bg" id="dayModalBg">
+  <div class="modal">
+    <h3 id="modalDateTitle">Giorno</h3>
+    <div class="date-label" id="modalDateSub"></div>
+
+    <div id="modalShiftList"></div>
+
+    <div class="add-shift-form">
+      <div class="row">
+        <div class="field" style="min-width:100%;">
+          <label>Dipendente</label>
+          <select id="shiftEmp"></select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <div class="field">
+          <label>Tipo</label>
+          <select id="shiftType">
+            <option value="turno">Turno</option>
+            <option value="riposo">Riposo</option>
+            <option value="non_assegnato">Non assegnato</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" id="shiftPresetsField" style="margin-top:8px;">
+        <div class="field" style="min-width:100%;">
+          <label>Orari frequenti (click per compilare)</label>
+          <div id="shiftPresets" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <div class="field" id="shiftFromField">
+          <label>Dalle</label>
+          <input type="time" id="shiftFrom" value="08:00">
+        </div>
+        <div class="field" id="shiftToField">
+          <label>Alle</label>
+          <input type="time" id="shiftTo" value="17:00">
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <div class="field" id="shiftPostoField">
+          <label>Posto di servizio</label>
+          <input id="shiftPosto" list="postoList" placeholder="es. OB. GABBIOTTO SESTO FIORENTINO - AREA TOSCANA, VIA SAN MORESE 57, 50019 Sesto Fiorentino">
+          <datalist id="postoList"></datalist>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <div class="field" style="min-width:100%;">
+          <label>Note</label>
+          <input id="shiftNote" placeholder="facoltativo">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn secondary" id="closeModalBtn">Chiudi</button>
+        <button class="btn" id="saveShiftBtn">Aggiungi turno</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   CONFIGURAZIONE FIREBASE
+   Sostituisci con i valori del tuo progetto Firebase
+   (Console Firebase → Impostazioni progetto → Le tue app → SDK config)
+   ========================================================= */
+const firebaseConfig = {
+  apiKey: "INSERISCI_API_KEY",
+  authDomain: "INSERISCI_PROJECT.firebaseapp.com",
+  projectId: "INSERISCI_PROJECT",
+  storageBucket: "INSERISCI_PROJECT.appspot.com",
+  messagingSenderId: "INSERISCI_SENDER_ID",
+  appId: "INSERISCI_APP_ID"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const empCol = db.collection("dipendenti");
+const shiftCol = db.collection("turni");
+
+const AZIENDA = {
+  nome: "F.P. SERVIZI INTEGRATI",
+  indirizzo: "VIA NOMENTANA, 761 - 00137 Roma"
+};
+
+const GIORNI_SETTIMANA = ["dom","lun","mar","mer","gio","ven","sab"];
+const MESI = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
+
+let dipendenti = [];   // {id, code, name, dept}
+let turni = [];        // {id, empId, date:'YYYY-MM-DD', type, from, to, posto, note}
+let currentMonth = new Date();
+currentMonth.setDate(1);
+let selectedDate = null;
+
+/* ---------------- Utility ---------------- */
+function pad(n){return n.toString().padStart(2,"0");}
+function fmtDateKey(d){return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;}
+function parseDateKey(k){const [y,m,d]=k.split("-").map(Number);return new Date(y,m-1,d);}
+function showToast(msg){
+  const t=document.getElementById("toast");
+  t.textContent=msg;t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"),2200);
+}
+function calcOre(from,to){
+  if(!from||!to) return 0;
+  const [fh,fm]=from.split(":").map(Number);
+  const [th,tm]=to.split(":").map(Number);
+  let start=fh*60+fm, end=th*60+tm;
+  if(end<=start) end+=24*60; // turno che sfora la mezzanotte
+  return Math.round(((end-start)/60)*100)/100;
+}
+function oreLabel(v){
+  return v.toString().replace(".",",");
+}
+
+/* ---------------- Navigazione viste ---------------- */
+document.querySelectorAll("nav button").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+    document.getElementById("view-"+btn.dataset.view).classList.add("active");
+    if(btn.dataset.view==="export") populateExportEmpSelect();
+  });
+});
+
+/* ---------------- Firestore: caricamento dati ---------------- */
+function listenDipendenti(){
+  empCol.orderBy("code").onSnapshot(snap=>{
+    dipendenti = snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderEmpTable();
+    populateShiftEmpSelect();
+    populateExportEmpSelect();
+    renderCalendar();
+  });
+}
+function listenTurni(){
+  shiftCol.onSnapshot(snap=>{
+    turni = snap.docs.map(d=>({id:d.id,...d.data()}));
+    renderCalendar();
+  });
+}
+
+/* ---------------- Dipendenti ---------------- */
+document.getElementById("addEmpBtn").addEventListener("click", async ()=>{
+  const code=document.getElementById("empCode").value.trim();
+  const name=document.getElementById("empName").value.trim().toUpperCase();
+  const dept=document.getElementById("empDept").value.trim();
+  if(!name){showToast("Inserisci almeno il nome");return;}
+  await empCol.add({code,name,dept});
+  document.getElementById("empCode").value="";
+  document.getElementById("empName").value="";
+  document.getElementById("empDept").value="";
+  showToast("Dipendente aggiunto");
+});
+
+function renderEmpTable(){
+  const tbody=document.querySelector("#empTable tbody");
+  tbody.innerHTML="";
+  document.getElementById("empEmpty").style.display = dipendenti.length ? "none":"block";
+  dipendenti.forEach(e=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`
+      <td>${e.code||""}</td>
+      <td>${e.name}</td>
+      <td>${e.dept||""}</td>
+      <td style="text-align:right;">
+        <button class="icon-btn" data-id="${e.id}" title="Elimina">✕</button>
+      </td>`;
+    tr.querySelector(".icon-btn").addEventListener("click", async ()=>{
+      if(confirm(`Eliminare ${e.name}? Verranno mantenuti i turni già inseriti.`)){
+        await empCol.doc(e.id).delete();
+        showToast("Dipendente eliminato");
+      }
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+/* ---------------- Calendario ---------------- */
+document.getElementById("prevMonth").addEventListener("click",()=>{
+  currentMonth.setMonth(currentMonth.getMonth()-1);
+  renderCalendar();
+});
+document.getElementById("nextMonth").addEventListener("click",()=>{
+  currentMonth.setMonth(currentMonth.getMonth()+1);
+  renderCalendar();
+});
+
+function renderCalendar(){
+  const y=currentMonth.getFullYear(), m=currentMonth.getMonth();
+  document.getElementById("monthLabel").textContent = `${MESI[m]} ${y}`;
+
+  const grid=document.getElementById("calGrid");
+  grid.innerHTML="";
+  ["Lun","Mar","Mer","Gio","Ven","Sab","Dom"].forEach(d=>{
+    const el=document.createElement("div");
+    el.className="cal-dow"; el.textContent=d;
+    grid.appendChild(el);
+  });
+
+  const firstDay=new Date(y,m,1);
+  let startOffset=firstDay.getDay()-1; // lunedì=0
+  if(startOffset<0) startOffset=6;
+  const daysInMonth=new Date(y,m+1,0).getDate();
+  const todayKey=fmtDateKey(new Date());
+
+  for(let i=0;i<startOffset;i++){
+    const el=document.createElement("div");
+    el.className="cal-day empty";
+    grid.appendChild(el);
+  }
+
+  for(let day=1;day<=daysInMonth;day++){
+    const d=new Date(y,m,day);
+    const key=fmtDateKey(d);
+    const cell=document.createElement("div");
+    cell.className="cal-day"+(key===todayKey?" today":"");
+    const dayShifts=turni.filter(t=>t.date===key);
+
+    let chipsHtml="";
+    dayShifts.slice(0,3).forEach(t=>{
+      const emp=dipendenti.find(e=>e.id===t.empId);
+      const empName=emp?emp.name.split(" ")[0]:"?";
+      if(t.type==="turno"){
+        chipsHtml+=`<div class="shift-chip">${empName} ${t.from}-${t.to}</div>`;
+      }else if(t.type==="riposo"){
+        chipsHtml+=`<div class="shift-chip riposo">${empName} riposo</div>`;
+      }else{
+        chipsHtml+=`<div class="shift-chip riposo">${empName} n/a</div>`;
+      }
+    });
+    if(dayShifts.length>3){
+      chipsHtml+=`<div class="shift-more">+${dayShifts.length-3} altri</div>`;
+    }
+
+    cell.innerHTML=`<div class="num">${day}</div>${chipsHtml}`;
+    cell.addEventListener("click",()=>openDayModal(key));
+    grid.appendChild(cell);
+  }
+}
+
+/* ---------------- Modale giorno ---------------- */
+function populateShiftEmpSelect(){
+  const sel=document.getElementById("shiftEmp");
+  const current=sel.value;
+  sel.innerHTML="";
+  dipendenti.forEach(e=>{
+    const opt=document.createElement("option");
+    opt.value=e.id; opt.textContent=e.name;
+    sel.appendChild(opt);
+  });
+  if(current) sel.value=current;
+}
+
+// Orari di partenza suggeriti: quelli visti nel file di esempio, più quelli
+// che emergono via via dagli inserimenti reali (sempre i più usati per primi).
+const DEFAULT_TIME_PRESETS = [
+  ["22:00","07:00"],["22:00","06:00"],["05:30","14:00"],["06:00","14:00"],
+  ["14:00","22:00"],["14:00","22:30"],["20:00","06:00"],["12:00","22:30"]
+];
+
+function getTimePresets(){
+  const counts={};
+  turni.forEach(t=>{
+    if(t.type==="turno" && t.from && t.to){
+      const key=`${t.from}|${t.to}`;
+      counts[key]=(counts[key]||0)+1;
+    }
+  });
+  DEFAULT_TIME_PRESETS.forEach(([f,to])=>{
+    const key=`${f}|${to}`;
+    if(!(key in counts)) counts[key]=0;
+  });
+  return Object.keys(counts)
+    .sort((a,b)=>counts[b]-counts[a])
+    .slice(0,8)
+    .map(k=>k.split("|"));
+}
+
+function renderTimePresets(){
+  const wrap=document.getElementById("shiftPresets");
+  wrap.innerHTML="";
+  getTimePresets().forEach(([f,to])=>{
+    const chip=document.createElement("div");
+    chip.className="preset-chip";
+    chip.textContent=`${f}-${to}`;
+    chip.addEventListener("click",()=>{
+      document.getElementById("shiftFrom").value=f;
+      document.getElementById("shiftTo").value=to;
+      document.querySelectorAll(".preset-chip").forEach(c=>c.classList.remove("active"));
+      chip.classList.add("active");
+    });
+    wrap.appendChild(chip);
+  });
+}
+
+function populatePostoList(){
+  const list=document.getElementById("postoList");
+  const seen=new Set();
+  turni.forEach(t=>{ if(t.posto) seen.add(t.posto); });
+  list.innerHTML="";
+  seen.forEach(v=>{
+    const opt=document.createElement("option");
+    opt.value=v;
+    list.appendChild(opt);
+  });
+}
+
+// Compila automaticamente l'ultimo posto di servizio e l'ultimo orario
+// usati per il dipendente selezionato, così normalmente basta scegliere
+// il nome e confermare.
+function autofillFromLastShift(empId){
+  const empShifts = turni
+    .filter(t=>t.empId===empId && t.type==="turno")
+    .sort((a,b)=> (a.date+  (a.from||"") ) < (b.date+ (b.from||"")) ? 1 : -1);
+  if(empShifts.length){
+    const last=empShifts[0];
+    if(last.posto) document.getElementById("shiftPosto").value=last.posto;
+    if(last.from) document.getElementById("shiftFrom").value=last.from;
+    if(last.to) document.getElementById("shiftTo").value=last.to;
+  }
+}
+
+document.getElementById("shiftEmp").addEventListener("change", (e)=>{
+  autofillFromLastShift(e.target.value);
+});
+
+document.getElementById("shiftType").addEventListener("change", updateShiftFormFields);
+function updateShiftFormFields(){
+  const type=document.getElementById("shiftType").value;
+  const showTime = type==="turno";
+  document.getElementById("shiftFromField").style.display = showTime?"block":"none";
+  document.getElementById("shiftToField").style.display = showTime?"block":"none";
+  document.getElementById("shiftPostoField").style.display = showTime?"block":"none";
+  document.getElementById("shiftPresetsField").style.display = showTime?"block":"none";
+}
+
+function openDayModal(dateKey){
+  selectedDate=dateKey;
+  const d=parseDateKey(dateKey);
+  document.getElementById("modalDateTitle").textContent =
+    `${GIORNI_SETTIMANA[d.getDay()]} ${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;
+  document.getElementById("modalDateSub").textContent = "Turni assegnati per questo giorno";
+  renderModalShiftList();
+  renderTimePresets();
+  populatePostoList();
+  updateShiftFormFields();
+  const empSel=document.getElementById("shiftEmp");
+  if(empSel.value) autofillFromLastShift(empSel.value);
+  document.getElementById("dayModalBg").classList.add("open");
+}
+document.getElementById("closeModalBtn").addEventListener("click",()=>{
+  document.getElementById("dayModalBg").classList.remove("open");
+});
+
+function renderModalShiftList(){
+  const list=document.getElementById("modalShiftList");
+  const dayShifts=turni.filter(t=>t.date===selectedDate);
+  if(!dayShifts.length){
+    list.innerHTML=`<div class="empty-state" style="padding:10px 0;">Nessun turno per questo giorno.</div>`;
+    return;
+  }
+  list.innerHTML="";
+  dayShifts.forEach(t=>{
+    const emp=dipendenti.find(e=>e.id===t.empId);
+    const row=document.createElement("div");
+    row.className="modal-shift-row";
+    let desc="";
+    if(t.type==="turno"){
+      desc=`${t.from} – ${t.to}${t.posto?` · ${t.posto}`:""}${t.note?` · ${t.note}`:""} (${oreLabel(calcOre(t.from,t.to))} ore)`;
+    }else if(t.type==="riposo"){
+      desc="Riposo";
+    }else{
+      desc="Non assegnato";
+    }
+    row.innerHTML=`
+      <div class="top">
+        <strong>${emp?emp.name:"Dipendente eliminato"}</strong>
+        <button class="icon-btn" title="Elimina turno">✕</button>
+      </div>
+      <div style="font-size:12px;color:var(--muted);">${desc}</div>`;
+    row.querySelector(".icon-btn").addEventListener("click", async ()=>{
+      await shiftCol.doc(t.id).delete();
+      showToast("Turno rimosso");
+    });
+    list.appendChild(row);
+  });
+}
+
+document.getElementById("saveShiftBtn").addEventListener("click", async ()=>{
+  const empId=document.getElementById("shiftEmp").value;
+  if(!empId){showToast("Aggiungi prima un dipendente");return;}
+  const type=document.getElementById("shiftType").value;
+  const data={
+    empId, date:selectedDate, type,
+    from: type==="turno"?document.getElementById("shiftFrom").value:"",
+    to: type==="turno"?document.getElementById("shiftTo").value:"",
+    posto: type==="turno"?document.getElementById("shiftPosto").value.trim():"",
+    note: document.getElementById("shiftNote").value.trim()
+  };
+  await shiftCol.add(data);
+  document.getElementById("shiftNote").value="";
+  showToast("Turno salvato");
+});
+
+/* ---------------- Export PDF ---------------- */
+document.getElementById("exportRange").addEventListener("change",()=>{
+  const isWeek = document.getElementById("exportRange").value==="week";
+  document.getElementById("exportMonthField").style.display = isWeek?"none":"block";
+  document.getElementById("exportWeekField").style.display = isWeek?"block":"none";
+});
+
+function populateExportEmpSelect(){
+  const sel=document.getElementById("exportEmp");
+  const current=sel.value;
+  sel.innerHTML=`<option value="">Tutti</option>`;
+  dipendenti.forEach(e=>{
+    const opt=document.createElement("option");
+    opt.value=e.id; opt.textContent=e.name;
+    sel.appendChild(opt);
+  });
+  sel.value=current||"";
+}
+
+// default: mese corrente
+(function initExportDefaults(){
+  const now=new Date();
+  document.getElementById("exportMonth").value=`${now.getFullYear()}-${pad(now.getMonth()+1)}`;
+  document.getElementById("exportWeekDate").value=fmtDateKey(now);
+})();
+
+function getMonthRange(monthStr){
+  const [y,m]=monthStr.split("-").map(Number);
+  const start=new Date(y,m-1,1);
+  const end=new Date(y,m,0);
+  return {start,end};
+}
+function getWeekRange(dateStr){
+  const d=parseDateKey(dateStr);
+  const dow=(d.getDay()+6)%7; // lunedì=0
+  const start=new Date(d); start.setDate(d.getDate()-dow);
+  const end=new Date(start); end.setDate(start.getDate()+6);
+  return {start,end};
+}
+
+document.getElementById("exportBtn").addEventListener("click", ()=>{
+  const empId=document.getElementById("exportEmp").value;
+  const range=document.getElementById("exportRange").value;
+  let start,end;
+  if(range==="week"){
+    ({start,end}=getWeekRange(document.getElementById("exportWeekDate").value));
+  }else{
+    ({start,end}=getMonthRange(document.getElementById("exportMonth").value));
+  }
+
+  const targets = empId ? dipendenti.filter(e=>e.id===empId) : dipendenti;
+  if(!targets.length){showToast("Nessun dipendente da esportare");return;}
+
+  targets.forEach(emp=>generatePdfForEmployee(emp,start,end));
+  showToast(targets.length>1 ? "PDF generati" : "PDF generato");
+});
+
+function generatePdfForEmployee(emp,start,end){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:"pt",format:"a4"});
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const marginX = 40;
+
+  // Intestazione azienda
+  doc.setFont("helvetica","bold");
+  doc.setFontSize(11);
+  doc.text(AZIENDA.nome, marginX, 46);
+  doc.setFont("helvetica","normal");
+  doc.setFontSize(9);
+  doc.text(AZIENDA.indirizzo, marginX, 58);
+
+  // Titolo programma
+  doc.setFont("helvetica","bold");
+  doc.setFontSize(11);
+  const titolo = `PROGRAMMA ORDINE DI SERVIZIO DAL ${fmtDDMMYYYY(start)} AL ${fmtDDMMYYYY(end)}`;
+  doc.text(titolo, pageWidth/2, 90, {align:"center"});
+
+  // Riga dipendente
+  const dipLabel = `Dipendente: ${emp.code?emp.code+" - ":""}${emp.name}`;
+  doc.setFontSize(9);
+  doc.setFont("helvetica","bold");
+  doc.text(dipLabel, marginX, 110);
+  if(emp.dept){
+    doc.text(emp.dept, pageWidth-marginX, 110, {align:"right"});
+  }
+
+  // Costruzione righe giorno per giorno
+  const rows=[];
+  let totaleOre=0;
+  const cursor=new Date(start);
+  while(cursor<=end){
+    const key=fmtDateKey(cursor);
+    const giorno=GIORNI_SETTIMANA[cursor.getDay()];
+    const dayShifts=turni.filter(t=>t.date===key && t.empId===emp.id);
+
+    if(!dayShifts.length){
+      rows.push([cursor.getDate()+" "+giorno, "", "", "Non Assegnato", "", ""]);
+    }else{
+      dayShifts.forEach(t=>{
+        if(t.type==="riposo"){
+          rows.push([cursor.getDate()+" "+giorno, "", "", "Riposo Man.", "", ""]);
+        }else if(t.type==="non_assegnato"){
+          rows.push([cursor.getDate()+" "+giorno, "", "", "Non Assegnato", "", ""]);
+        }else{
+          const ore=calcOre(t.from,t.to);
+          totaleOre+=ore;
+          rows.push([cursor.getDate()+" "+giorno, t.from, t.to, t.posto||"", t.note||"", oreLabel(ore)]);
+        }
+      });
+    }
+    cursor.setDate(cursor.getDate()+1);
+  }
+
+  doc.autoTable({
+    startY: 122,
+    margin:{left:marginX,right:marginX},
+    head:[["Giorno","Dalle","Alle","Posto di servizio","Note","Ore"]],
+    body: rows,
+    theme:"grid",
+    styles:{font:"helvetica",fontSize:8,cellPadding:4,valign:"top",lineColor:[210,210,210],lineWidth:.5},
+    headStyles:{fillColor:[240,240,240],textColor:[20,20,20],fontStyle:"bold"},
+    columnStyles:{
+      0:{cellWidth:48},
+      1:{cellWidth:36,halign:"center"},
+      2:{cellWidth:36,halign:"center"},
+      3:{cellWidth:"auto"},
+      4:{cellWidth:70},
+      5:{cellWidth:34,halign:"right"}
+    }
+  });
+
+  const finalY = doc.lastAutoTable.finalY + 16;
+  doc.setFont("helvetica","bold");
+  doc.setFontSize(9);
+  doc.text(`Totale ore servizi ${oreLabel(Math.round(totaleOre*100)/100)}`, pageWidth-marginX, finalY, {align:"right"});
+
+  doc.setFont("helvetica","normal");
+  doc.setFontSize(9);
+  doc.text("Il dipendente", marginX, finalY+40);
+  doc.line(marginX, finalY+62, marginX+160, finalY+62);
+
+  // Footer
+  const pageHeight = doc.internal.pageSize.getHeight();
+  doc.setFontSize(7.5);
+  doc.setTextColor(90);
+  const now=new Date();
+  const elaborato = `Elaborato ${GIORNI_LUNGHI(now.getDay())} ${now.getDate()} ${MESI[now.getMonth()].toLowerCase()} ${now.getFullYear()} alle ore ${pad(now.getHours())}.${pad(now.getMinutes())}.${pad(now.getSeconds())}`;
+  doc.text(elaborato, marginX, pageHeight-30);
+  doc.text("N.B. : il suddetto ordine di servizio potrà subire eventuali variazioni", marginX, pageHeight-18);
+  doc.text("Pag. 1 di 1", pageWidth-marginX, pageHeight-18, {align:"right"});
+
+  const filename = `${emp.code?emp.code+"_":""}${emp.name.replace(/\s+/g,"_")}_${fmtDDMMYYYY(start).replace(/\//g,"")}_${fmtDDMMYYYY(end).replace(/\//g,"")}.pdf`;
+  doc.save(filename);
+}
+
+function fmtDDMMYYYY(d){return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`;}
+function GIORNI_LUNGHI(dow){
+  return ["domenica","lunedì","martedì","mercoledì","giovedì","venerdì","sabato"][dow];
+}
+
+/* ---------------- Avvio ---------------- */
+listenDipendenti();
+listenTurni();
+renderCalendar();
+</script>
+</body>
+</html>
