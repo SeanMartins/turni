@@ -306,8 +306,8 @@
     <h2>Accesso</h2>
     <p class="login-sub">Gestione Turni — F.P. Servizi Integrati</p>
     <div class="field">
-      <label>Email</label>
-      <input type="email" id="loginEmail" autocomplete="username">
+      <label>Nome utente</label>
+      <input type="text" id="loginEmail" autocomplete="username">
     </div>
     <div class="field" style="margin-top:10px;">
       <label>Password</label>
@@ -1058,14 +1058,22 @@ document.getElementById("loginPassword").addEventListener("keydown", e=>{
   if(e.key==="Enter") doLogin();
 });
 
+// Dominio "finto" usato solo internamente per trasformare un nome utente
+// semplice in un formato email valido richiesto da Firebase Authentication.
+// L'utente non vede né digita mai questo dominio.
+const AUTH_DOMAIN_SUFFIX = "@turni-app.local";
+function usernameToAuthEmail(username){
+  return username.trim().toLowerCase().replace(/\s+/g,"") + AUTH_DOMAIN_SUFFIX;
+}
+
 function doLogin(){
-  const email=document.getElementById("loginEmail").value.trim();
+  const username=document.getElementById("loginEmail").value.trim();
   const pwd=document.getElementById("loginPassword").value;
   const errEl=document.getElementById("loginError");
   errEl.textContent="";
-  if(!email||!pwd){errEl.textContent="Inserisci email e password.";return;}
-  auth.signInWithEmailAndPassword(email,pwd).catch(err=>{
-    errEl.textContent = "Accesso non riuscito: email o password errati.";
+  if(!username||!pwd){errEl.textContent="Inserisci nome utente e password.";return;}
+  auth.signInWithEmailAndPassword(usernameToAuthEmail(username),pwd).catch(err=>{
+    errEl.textContent = "Accesso non riuscito: nome utente o password errati.";
   });
 }
 </script>
